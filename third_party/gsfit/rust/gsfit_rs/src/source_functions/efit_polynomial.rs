@@ -1,0 +1,141 @@
+use crate::source_functions::SourceFunctionTraits;
+use ndarray::{Array1, Array2};
+use numpy::PyArrayMethods; // used in to convert python data into ndarray
+use numpy::borrow::PyReadonlyArray2;
+use pyo3::prelude::*;
+
+#[derive(Clone)]
+#[pyclass(skip_from_py_object)]
+pub struct EfitPolynomial {
+    pub n_dof: usize,
+    pub regularisations: Array2<f64>,
+    pub dof_values: Array1<f64>,
+}
+
+// TODO: check polynomial equation - do we need to add term to keep current density zero at edge???
+/// Python accessible methods
+#[pymethods]
+impl EfitPolynomial {
+    /// Create a new EfitPolynomial
+    ///
+    /// Using Eq. 4 and 5 from:
+    /// L. Lao, et. al., "Reconstruction of current profile parameters and plasma shapes in tokamaks", Nucl. Fusion, 1985
+    /// https://doi.org/10.1088/0029-5515/25/11/007
+    #[new]
+    pub fn new(n_dof: usize, regularisations: PyReadonlyArray2<f64>) -> Self {
+        // Change Python types into Rust types
+        let regularisations_ndarray: Array2<f64> = regularisations.to_owned_array();
+        let polynomial_coefficients_ndarray: Array1<f64> = Array1::zeros(0);
+
+        // Create the struct
+        EfitPolynomial {
+            n_dof,
+            regularisations: regularisations_ndarray,
+            dof_values: polynomial_coefficients_ndarray,
+        }
+    }
+
+    /// Print to screen, to be used within Python
+    fn __repr__(&self) -> String {
+        let version: &str = env!("CARGO_PKG_VERSION");
+
+        let mut string_output = String::from("╔═════════════════════════════════════════════════════════════════════════════╗\n");
+        string_output += &format!("║ {:<75} ║\n", " <gsfit_rs.EfitPolynomial>");
+        string_output += &format!("║  {:<74} ║\n", version);
+
+        let n_dof: usize = self.n_dof;
+        string_output += &format!("║ {:<75} ║\n", format!(" n_dof = {}", n_dof.to_string()));
+
+        string_output.push_str("╚═════════════════════════════════════════════════════════════════════════════╝");
+
+        string_output
+    }
+}
+
+impl SourceFunctionTraits for EfitPolynomial {
+    fn source_function_value_single_dof(&self, psi_n: &Array1<f64>, i_dof: usize) -> Array1<f64> {
+        let value: Array1<f64> = (1.0 - psi_n) * &psi_n.powi(i_dof as i32);
+
+        value
+    }
+
+    fn source_function_derivative_single_dof(&self, psi_n: &Array1<f64>, i_dof: usize) -> Array1<f64> {
+        // TODO: This function is not implemented yet
+        unimplemented!("Source function is not implemented yet");
+    }
+
+    /// Integral of a single degree of freedom
+    ///
+    /// We take the integral from 1 to `psi_n`, this ensures that the integral is zero at `psi_n = 1`.
+    ///
+    /// The source function value for degree of freedom `i_dof` is:
+    ///   src(ψₙ) = (1 − ψₙ) · ψₙ^i_dof
+    ///
+    /// Its antiderivative is:
+    ///   antideriv(ψₙ) = ψₙ^(i_dof+1) / (i_dof+1) − ψₙ^(i_dof+2) / (i_dof+2)
+    ///
+    /// The definite integral from 1 to ψₙ is:
+    ///   ∫_1^ψₙ src(y) dy = antideriv(ψₙ) − antideriv(1)
+    ///                    = ψₙ^(i_dof+1)/(i_dof+1) − ψₙ^(i_dof+2)/(i_dof+2)
+    ///                      − 1/(i_dof+1) + 1/(i_dof+2)
+    ///
+    /// # Arguments
+    /// * `psi_n` - The points at which we want to evaluate the integral
+    /// * `i_dof` - The index of the degree of freedom to evaluate
+    ///
+    /// # Returns
+    /// An array of the same length as `psi_n` containing the integral of the source function
+    /// for the specified degree of freedom, which is zero at `psi_n = 1`.
+    fn source_function_integral_single_dof(&self, psi_n: &Array1<f64>, i_dof: usize) -> Array1<f64> {
+        let i_dof_f64: f64 = i_dof as f64;
+        // antideriv(1) = 1/(i_dof+1) - 1/(i_dof+2), subtracted to shift the integral so it is zero at psi_n = 1
+        let integration_constant: f64 = -1.0 / (i_dof_f64 + 1.0) + 1.0 / (i_dof_f64 + 2.0);
+        let integral: Array1<f64> =
+            psi_n.mapv(|x| x.powi(i_dof as i32 + 1)) / (i_dof_f64 + 1.0) - psi_n.mapv(|x| x.powi(i_dof as i32 + 2)) / (i_dof_f64 + 2.0) + integration_constant;
+
+        integral
+    }
+
+    fn source_function_value(&self, psi_n: &Array1<f64>, polynomial_dof: &Array1<f64>) -> Array1<f64> {
+        let n_psi_n: usize = psi_n.len();
+        let n_dof: usize = polynomial_dof.len();
+
+        let mut value: Array1<f64> = Array1::zeros(n_psi_n);
+        for i_dof in 0..n_dof {
+            value = value + polynomial_dof[i_dof] * self.source_function_value_single_dof(psi_n, i_dof);
+        }
+
+        value
+    }
+
+    fn source_function_derivative(&self, psi_n: &Array1<f64>, polynomial_dof: &Array1<f64>) -> Array1<f64> {
+        // TODO: This function is not implemented yet
+        unimplemented!("Source function is not implemented yet");
+    }
+
+    fn source_function_integral(&self, psi_n: &Array1<f64>, polynomial_dof: &Array1<f64>) -> Array1<f64> {
+        let n_dof: usize = self.n_dof;
+        let n_psi_n: usize = psi_n.len();
+
+        // No constant of integration needed: `source_function_integral_single_dof` already
+        // integrates from 1 to psi_n, so the sum is guaranteed to be zero at psi_n = 1.
+        let mut integral: Array1<f64> = Array1::zeros(n_psi_n);
+        for i_dof in 0..n_dof {
+            integral = integral + polynomial_dof[i_dof] * self.source_function_integral_single_dof(psi_n, i_dof);
+        }
+
+        integral
+    }
+
+    fn source_function_regularisation(&self) -> Array2<f64> {
+        let regularisations: Array2<f64> = self.regularisations.clone();
+
+        regularisations
+    }
+
+    fn source_function_n_dof(&self) -> usize {
+        let n_dof: usize = self.n_dof;
+
+        n_dof
+    }
+}

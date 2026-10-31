@@ -1,0 +1,4 @@
+892bd5621abb559c5635038ea8c6edd10bed6ad567a61de1f2e32419d915e69e  weights/mast_v3/best.pt
+a6dbae9820deedb4b2de4b5a12b8ff0f774c451aceb75e7727a4e941e4335674  weights/mast_v3/layout.json
+684fe16ea20d5394658ef00926ab245103c33529372812a2bad467e0b4bf0e14  weights/mast_v3/stats.json
+5cc6aede238a0d5997a32a60a27ec047cbbb6a978e6dd354b0012dc418aa0547  weights/diiid/model.pt

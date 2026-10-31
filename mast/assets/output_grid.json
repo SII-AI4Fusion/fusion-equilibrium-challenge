@@ -1,0 +1,12 @@
+{
+  "source": "ganatma/fusion-equilibrium-challenge-final",
+  "revision": "965040c12b814f33c8e7209f6b1799932247e793",
+  "file": "data/mast_private_test/mast_shot_6dbd684311.parquet",
+  "columns": [
+    "efit_grid_R",
+    "efit_grid_Z"
+  ],
+  "stored_dtype": "float64",
+  "sha256": "ba455d5b5e6ed5dbdc823c83fb7af3a6208fff8bbab3744f7f4eee8b300f45d1",
+  "note": "Output coordinates only; no equilibrium values or mask arrays."
+}

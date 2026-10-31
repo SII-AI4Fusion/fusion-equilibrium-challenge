@@ -1,0 +1,14 @@
+{
+  "protocol": "mast-v4-passive",
+  "title": "Stage 2 passive-current GSFit (MAST Final), v3 magnetics and v3 passive currents",
+  "paths": {
+    "geometry": "{repo}/assets/mast_static_geometry_passive.npz",
+    "output_grid": "{repo}/assets/output_grid.npz"
+  },
+  "defaults": {
+    "workers": 16,
+    "frame_stride": 8,
+    "score_workers": 8,
+    "bootstrap": 2000
+  }
+}

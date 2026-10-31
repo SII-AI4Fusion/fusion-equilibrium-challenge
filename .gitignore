@@ -1,0 +1,7 @@
+/data/*
+!/data/*.py
+/runs/
+/weights/*/
+/.venv-*
+__pycache__/
+*.pyc

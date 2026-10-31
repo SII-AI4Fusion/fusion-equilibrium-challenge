@@ -1,0 +1,284 @@
+from typing import TYPE_CHECKING
+
+import numpy as np
+
+# from st40_database import GetData
+
+if TYPE_CHECKING:
+    from ...gsfit import Gsfit
+    from . import DatabaseWriterTokamakEnergyMDSplusNew
+
+
+def map_results_to_database(
+    self: "DatabaseWriterTokamakEnergyMDSplusNew",
+    gsfit_controller: "Gsfit",
+) -> None:
+    """Map the results to MDSplus structure.
+    `gsfit_controller.results` is a `NestedDict` object, which is a 1:1 mapping to the MDSplus structure.
+    This function will mutate the `gsfit_controller` object.
+    """
+
+    # Take class object out of the `gsfit_controller` object
+    pulseNo = gsfit_controller.pulseNo
+    settings = gsfit_controller.settings
+    plasma = gsfit_controller.plasma
+    bp_probes = gsfit_controller.bp_probes
+    flux_loops = gsfit_controller.flux_loops
+    dialoop = gsfit_controller.dialoop
+    rogowski_coils = gsfit_controller.rogowski_coils
+    passives = gsfit_controller.passives
+    coils = gsfit_controller.coils
+    pressure_sensors = gsfit_controller.pressure_sensors
+    results = gsfit_controller.results
+
+    # Plasma boundary
+    results["BOUNDARY"]["GEO_AXIS"]["R"] = plasma.get_array1(["boundary", "geometric_axis", "r"])
+    results["BOUNDARY"]["GEO_AXIS"]["Z"] = plasma.get_array1(["boundary", "geometric_axis", "z"])
+    results["BOUNDARY"]["MINOR_RADIUS"] = plasma.get_array1(["boundary", "minor_radius"])
+    results["BOUNDARY"]["ELONGATION"] = plasma.get_array1(["boundary", "elongation"])
+    results["BOUNDARY"]["TRIANG"] = plasma.get_array1(["boundary", "triangularity"])
+    results["BOUNDARY"]["TRIANG_L"] = plasma.get_array1(["boundary", "triangularity_lower"])
+    results["BOUNDARY"]["TRIANG_U"] = plasma.get_array1(["boundary", "triangularity_upper"])
+    results["BOUNDARY"]["SQUARE_L_I"] = plasma.get_array1(["boundary", "squareness_lower_inner"])
+    results["BOUNDARY"]["SQUARE_L_O"] = plasma.get_array1(["boundary", "squareness_lower_outer"])
+    results["BOUNDARY"]["SQUARE_U_I"] = plasma.get_array1(["boundary", "squareness_upper_inner"])
+    results["BOUNDARY"]["SQUARE_U_O"] = plasma.get_array1(["boundary", "squareness_upper_outer"])
+    results["BOUNDARY"]["PSI"] = plasma.get_array1(["boundary", "psi"])
+    results["BOUNDARY"]["PSI_NORM"] = np.ones_like(results["BOUNDARY"]["PSI"])  # flux defining LCFS, SPIDER has `psi_norm = 0.9999`
+    results["BOUNDARY"]["OUTLINE"]["N"] = np.array(plasma.get_vec_usize(["boundary", "outline", "n"]))
+    results["BOUNDARY"]["OUTLINE"]["R"] = plasma.get_array2(["boundary", "outline", "r"])
+    results["BOUNDARY"]["OUTLINE"]["Z"] = plasma.get_array2(["boundary", "outline", "z"])
+    results["BOUNDARY"]["BOUNDING"]["R"] = plasma.get_array1(["boundary", "bounding", "r"])
+    results["BOUNDARY"]["BOUNDING"]["Z"] = plasma.get_array1(["boundary", "bounding", "z"])
+
+    # Convergence
+    results["CONVERGENCE"]["GS_ERROR"] = plasma.get_array1(["global", "gs_error"])
+    results["CONVERGENCE"]["ITERATIONS_N"] = np.array(plasma.get_vec_usize(["global", "n_iter"])).astype(np.int32)
+
+    # Global
+    results["GLOBAL"]["CURRENT_CENT"]["R"] = plasma.get_array1(["global", "r_cur"])
+    # results["GLOBAL"]["CURRENT_CENT"]["VELOCITY_Z"] = plasma.get_array1(["global", "current_cent", "velocity_z"])
+    results["GLOBAL"]["CURRENT_CENT"]["Z"] = plasma.get_array1(["global", "z_cur"])
+    # results["GLOBAL"]["MAG_AXIS"]["B_FIELD_PHI"] = plasma.get_array1(["global", "bt_at_r_mag"])
+    results["GLOBAL"]["MAG_AXIS"]["R"] = plasma.get_array1(["global", "r_mag"])
+    results["GLOBAL"]["MAG_AXIS"]["Z"] = plasma.get_array1(["global", "z_mag"])
+    results["GLOBAL"]["AREA"] = plasma.get_array1(["global", "area"])
+    results["GLOBAL"]["BETA_N"] = plasma.get_array1(["global", "beta_n"])
+    results["GLOBAL"]["BETA_P_1"] = plasma.get_array1(["global", "beta_p_1"])
+    results["GLOBAL"]["BETA_P_2"] = plasma.get_array1(["global", "beta_p_2"])
+    results["GLOBAL"]["BETA_P_3"] = plasma.get_array1(["global", "beta_p_3"])
+    results["GLOBAL"]["BETA_T"] = plasma.get_array1(["global", "beta_t"])
+    # results["GLOBAL"]["BP_OMP"] = plasma.get_array1(["global", "bp_omp"])
+    results["GLOBAL"]["BT_VAC_RGEO"] = plasma.get_array1(["global", "bt_vac_at_r_geo"])
+    # results["GLOBAL"]["CONN_LENGTH"] = plasma.get_array1(["global", "conn_length"])
+    # results["GLOBAL"]["DELTA_R_SEP"] = plasma.get_array1(["global", "delta_r_sep"])
+    results["GLOBAL"]["DELTA_Z"] = plasma.get_array1(["global", "delta_z"])
+    results["GLOBAL"]["ENERGY_MHD"] = plasma.get_array1(["global", "w_mhd"])
+    # results["GLOBAL"]["FX"] = plasma.get_array1(["global", "fx"])
+    results["GLOBAL"]["IP"] = plasma.get_array1(["global", "ip"])
+    results["GLOBAL"]["I_ROD"] = plasma.get_array1(["global", "i_rod"])
+    results["GLOBAL"]["LI_1"] = plasma.get_array1(["global", "li_1"])
+    results["GLOBAL"]["LI_2"] = plasma.get_array1(["global", "li_2"])
+    results["GLOBAL"]["LI_3"] = plasma.get_array1(["global", "li_3"])
+    results["GLOBAL"]["PHI_DIA"] = plasma.get_array1(["global", "phi_dia"])
+    results["GLOBAL"]["PSI_MAG_AXIS"] = plasma.get_array1(["global", "psi_a"])
+    results["GLOBAL"]["Q_AXIS"] = plasma.get_array1(["global", "q_axis"])
+    results["GLOBAL"]["Q_95"] = plasma.get_array1(["global", "q_95"])
+    results["GLOBAL"]["V_LOOP"] = plasma.get_array1(["global", "v_loop"])
+    results["GLOBAL"]["VOLUME"] = plasma.get_array1(["global", "volume"])
+    results["GLOBAL"]["XPT_DIVERTED"] = np.array(plasma.get_vec_bool(["global", "xpt_diverted"])).astype(np.int32)
+
+    # Profiles_1d, psi_norm
+    results["PROFILES_1D"]["PSI_NORM"]["AREA"] = plasma.get_array2(["profiles_1d", "psi_norm", "area"])
+    results["PROFILES_1D"]["PSI_NORM"]["AREA_PRIME"] = plasma.get_array2(["profiles_1d", "psi_norm", "area_prime"])
+    results["PROFILES_1D"]["PSI_NORM"]["F"] = plasma.get_array2(["profiles_1d", "psi_norm", "f"])
+    results["PROFILES_1D"]["PSI_NORM"]["FF_PRIME"] = plasma.get_array2(["profiles_1d", "psi_norm", "ff_prime"])
+    results["PROFILES_1D"]["PSI_NORM"]["FLUX_TOR"] = plasma.get_array2(["profiles_1d", "psi_norm", "flux_tor"])
+    results["PROFILES_1D"]["PSI_NORM"]["P_PRIME"] = plasma.get_array2(["profiles_1d", "psi_norm", "p_prime"])
+    results["PROFILES_1D"]["PSI_NORM"]["PRESSURE"] = plasma.get_array2(["profiles_1d", "psi_norm", "p"])
+    results["PROFILES_1D"]["PSI_NORM"]["Q"] = plasma.get_array2(["profiles_1d", "psi_norm", "q"])
+    results["PROFILES_1D"]["PSI_NORM"]["RHO_POL"] = plasma.get_array2(["profiles_1d", "psi_norm", "rho_pol"])
+    results["PROFILES_1D"]["PSI_NORM"]["RHO_TOR"] = plasma.get_array2(["profiles_1d", "psi_norm", "rho_tor"])
+    results["PROFILES_1D"]["PSI_NORM"]["PSI_NORM"] = plasma.get_array1(["profiles_1d", "psi_norm", "psi_norm"])
+    results["PROFILES_1D"]["PSI_NORM"]["VOL"] = plasma.get_array2(["profiles_1d", "psi_norm", "vol"])
+    results["PROFILES_1D"]["PSI_NORM"]["VOL_PRIME"] = plasma.get_array2(["profiles_1d", "psi_norm", "vol_prime"])
+
+    # Mid-plane profiles
+    results["PROFILES_1D"]["R_MIDPLANE"]["PRESSURE"] = plasma.get_array2(["profiles_1d", "r_midplane", "p"])
+    # results["PROFILES_1D"]["R_MIDPLANE"]["Q"] = plasma.get_array2(["profiles_1d", "r_midplane", "q"])
+    results["PROFILES_1D"]["R_MIDPLANE"]["R"] = plasma.get_array1(["profiles_1d", "r_midplane", "r"])
+
+    # Profiles_2d
+    results["PROFILES_2D"]["R_Z"]["B_FIELD_PHI"] = plasma.get_array3(["profiles_2d", "r_z", "bt"])
+    results["PROFILES_2D"]["R_Z"]["B_FIELD_R"] = plasma.get_array3(["profiles_2d", "r_z", "br"])
+    results["PROFILES_2D"]["R_Z"]["B_FIELD_Z"] = plasma.get_array3(["profiles_2d", "r_z", "bz"])
+    results["PROFILES_2D"]["R_Z"]["MASK"] = plasma.get_array3(["profiles_2d", "r_z", "mask"])
+    results["PROFILES_2D"]["R_Z"]["PRESSURE"] = plasma.get_array3(["profiles_2d", "r_z", "p"])
+    results["PROFILES_2D"]["R_Z"]["PSI"] = plasma.get_array3(["profiles_2d", "r_z", "psi"])
+    results["PROFILES_2D"]["R_Z"]["R"] = plasma.get_array1(["grid", "r"])
+    results["PROFILES_2D"]["R_Z"]["Z"] = plasma.get_array1(["grid", "z"])
+
+    # Constraints
+    results["CONSTRAINTS"]["CHI_SQ_MAG"] = plasma.get_array1(["global", "chi_mag"])
+
+    for sensor_name in bp_probes.keys():
+        # results["CONSTRAINTS"]["BP_PROBE"][pf_name]["EXACT"]
+        results["CONSTRAINTS"]["BP_PROBE"][sensor_name]["INCLUDE"] = np.int32(bp_probes.get_bool([sensor_name, "fit_settings", "include"]))
+        results["CONSTRAINTS"]["BP_PROBE"][sensor_name]["MEASURED"] = bp_probes.get_array1([sensor_name, "b", "measured", "value"])
+        results["CONSTRAINTS"]["BP_PROBE"][sensor_name]["RECONSTRUCT"] = bp_probes.get_array1([sensor_name, "b", "calculated", "value"])
+        results["CONSTRAINTS"]["BP_PROBE"][sensor_name]["WEIGHT"] = bp_probes.get_f64([sensor_name, "fit_settings", "weight"])
+
+    for sensor_name in flux_loops.keys():
+        # results["CONSTRAINTS"]["FLUX_LOOP"][pf_name]["EXACT"]
+        results["CONSTRAINTS"]["FLUX_LOOP"][sensor_name]["INCLUDE"] = np.int32(flux_loops.get_bool([sensor_name, "fit_settings", "include"]))
+        results["CONSTRAINTS"]["FLUX_LOOP"][sensor_name]["MEASURED"] = flux_loops.get_array1([sensor_name, "psi", "measured", "value"])
+        results["CONSTRAINTS"]["FLUX_LOOP"][sensor_name]["RECONSTRUCT"] = flux_loops.get_array1([sensor_name, "psi", "calculated", "value"])
+        results["CONSTRAINTS"]["FLUX_LOOP"][sensor_name]["WEIGHT"] = flux_loops.get_f64([sensor_name, "fit_settings", "weight"])
+
+    for sensor_name in rogowski_coils.keys():
+        # results["CONSTRAINTS"]["ROGOWSKI"][pf_name]["EXACT"]
+        results["CONSTRAINTS"]["ROGOWSKI"][sensor_name]["INCLUDE"] = np.int32(rogowski_coils.get_bool([sensor_name, "fit_settings", "include"]))
+        results["CONSTRAINTS"]["ROGOWSKI"][sensor_name]["MEASURED"] = rogowski_coils.get_array1([sensor_name, "i", "measured", "value"])
+        results["CONSTRAINTS"]["ROGOWSKI"][sensor_name]["RECONSTRUCT"] = rogowski_coils.get_array1([sensor_name, "i", "calculated", "value"])
+        results["CONSTRAINTS"]["ROGOWSKI"][sensor_name]["WEIGHT"] = rogowski_coils.get_f64([sensor_name, "fit_settings", "weight"])
+
+    # Diamagnetic flux (single diamagnetic flux loop "DIALOOP")
+    for sensor_name in dialoop.keys():
+        results["CONSTRAINTS"]["DIAMAG_FLUX"]["INCLUDE"] = np.int32(dialoop.get_bool([sensor_name, "fit_settings", "include"]))
+        results["CONSTRAINTS"]["DIAMAG_FLUX"]["MEASURED"] = dialoop.get_array1([sensor_name, "b", "measured", "value"])
+        results["CONSTRAINTS"]["DIAMAG_FLUX"]["RECONSTRUCT"] = dialoop.get_array1([sensor_name, "b", "calculated", "value"])
+        results["CONSTRAINTS"]["DIAMAG_FLUX"]["WEIGHT"] = dialoop.get_f64([sensor_name, "fit_settings", "weight"])
+
+    for pf_name in coils.keys(["pf"]):
+        # results["CONSTRAINTS"]["PF_CURRENT"][pf_name]["EXACT"]
+        # results["CONSTRAINTS"]["PF_CURRENT"][pf_name]["INCLUDE"] = np.int32(coils.get_bool(["pf", pf_name, "fit_settings", "include"]))
+        results["CONSTRAINTS"]["PF_CURRENT"][pf_name]["MEASURED"] = coils.get_array1(["pf", pf_name, "i", "measured", "value"])
+        # results["CONSTRAINTS"]["PF_CURRENT"][pf_name]["RECONSTRUCT"] = coils.get_array1(["pf", pf_name, "i", "calculated", "value"])
+        # results["CONSTRAINTS"]["PF_CURRENT"][pf_name]["WEIGHT"] = coils.get_f64(["pf", pf_name, "fit_settings", "weight"])
+    # TODO: need to handle circuits vs coils better
+    results["CONSTRAINTS"]["PF_CURRENT"]["BVL"]["MEASURED"] = coils.get_array1(["pf", "BVLT", "i", "measured", "value"])
+    results["CONSTRAINTS"]["PF_CURRENT"]["DIV"]["MEASURED"] = coils.get_array1(["pf", "DIVT", "i", "measured", "value"])
+    results["CONSTRAINTS"]["PF_CURRENT"]["PSH"]["MEASURED"] = coils.get_array1(["pf", "PSHT", "i", "measured", "value"])
+
+    # # X-points
+    # # TODO!!!!!!!!!!!
+    # results["XPOINTS"]["UPPER"]["R"] = plasma.get_array1(["xpoints", "upper", "r"])
+    # results["XPOINTS"]["UPPER"]["Z"] = plasma.get_array1(["xpoints", "upper", "z"])
+    # results["XPOINTS"]["LOWER"]["R"] = plasma.get_array1(["xpoints", "lower", "r"])
+    # results["XPOINTS"]["LOWER"]["Z"] = plasma.get_array1(["xpoints", "lower", "z"])
+
+    # Passives
+    for passive_name in passives.keys():
+        if passive_name == "IVC":
+            results["CONSTRAINTS"]["PF_PASSIVE"]["IVC"]["DOF"]["EIG_01"]["RECONSTRUCT"] = passives.get_array1(["IVC", "dof", "eig_01", "calculated"])
+            results["CONSTRAINTS"]["PF_PASSIVE"]["IVC"]["DOF"]["EIG_01"]["I_DIST"] = passives.get_array1(["IVC", "dof", "eig_01", "current_distribution"])
+            results["CONSTRAINTS"]["PF_PASSIVE"]["IVC"]["DOF"]["EIG_02"]["RECONSTRUCT"] = passives.get_array1(["IVC", "dof", "eig_02", "calculated"])
+            results["CONSTRAINTS"]["PF_PASSIVE"]["IVC"]["DOF"]["EIG_02"]["I_DIST"] = passives.get_array1(["IVC", "dof", "eig_02", "current_distribution"])
+            results["CONSTRAINTS"]["PF_PASSIVE"]["IVC"]["DOF"]["EIG_03"]["RECONSTRUCT"] = passives.get_array1(["IVC", "dof", "eig_03", "calculated"])
+            results["CONSTRAINTS"]["PF_PASSIVE"]["IVC"]["DOF"]["EIG_03"]["I_DIST"] = passives.get_array1(["IVC", "dof", "eig_03", "current_distribution"])
+            results["CONSTRAINTS"]["PF_PASSIVE"]["IVC"]["DOF"]["EIG_04"]["RECONSTRUCT"] = passives.get_array1(["IVC", "dof", "eig_04", "calculated"])
+            results["CONSTRAINTS"]["PF_PASSIVE"]["IVC"]["DOF"]["EIG_04"]["I_DIST"] = passives.get_array1(["IVC", "dof", "eig_04", "current_distribution"])
+            results["CONSTRAINTS"]["PF_PASSIVE"]["IVC"]["DOF"]["EIG_05"]["RECONSTRUCT"] = passives.get_array1(["IVC", "dof", "eig_05", "calculated"])
+            results["CONSTRAINTS"]["PF_PASSIVE"]["IVC"]["DOF"]["EIG_05"]["I_DIST"] = passives.get_array1(["IVC", "dof", "eig_05", "current_distribution"])
+            results["CONSTRAINTS"]["PF_PASSIVE"]["IVC"]["DOF"]["EIG_06"]["RECONSTRUCT"] = passives.get_array1(["IVC", "dof", "eig_06", "calculated"])
+            results["CONSTRAINTS"]["PF_PASSIVE"]["IVC"]["DOF"]["EIG_06"]["I_DIST"] = passives.get_array1(["IVC", "dof", "eig_06", "current_distribution"])
+            results["CONSTRAINTS"]["PF_PASSIVE"]["IVC"]["DOF"]["EIG_07"]["RECONSTRUCT"] = passives.get_array1(["IVC", "dof", "eig_07", "calculated"])
+            results["CONSTRAINTS"]["PF_PASSIVE"]["IVC"]["DOF"]["EIG_07"]["I_DIST"] = passives.get_array1(["IVC", "dof", "eig_07", "current_distribution"])
+            results["CONSTRAINTS"]["PF_PASSIVE"]["IVC"]["DOF"]["EIG_08"]["RECONSTRUCT"] = passives.get_array1(["IVC", "dof", "eig_08", "calculated"])
+            results["CONSTRAINTS"]["PF_PASSIVE"]["IVC"]["DOF"]["EIG_08"]["I_DIST"] = passives.get_array1(["IVC", "dof", "eig_08", "current_distribution"])
+            results["CONSTRAINTS"]["PF_PASSIVE"]["IVC"]["DOF"]["EIG_09"]["RECONSTRUCT"] = passives.get_array1(["IVC", "dof", "eig_09", "calculated"])
+            results["CONSTRAINTS"]["PF_PASSIVE"]["IVC"]["DOF"]["EIG_09"]["I_DIST"] = passives.get_array1(["IVC", "dof", "eig_09", "current_distribution"])
+            results["CONSTRAINTS"]["PF_PASSIVE"]["IVC"]["DOF"]["EIG_10"]["RECONSTRUCT"] = passives.get_array1(["IVC", "dof", "eig_10", "calculated"])
+            results["CONSTRAINTS"]["PF_PASSIVE"]["IVC"]["DOF"]["EIG_10"]["I_DIST"] = passives.get_array1(["IVC", "dof", "eig_10", "current_distribution"])
+            results["CONSTRAINTS"]["PF_PASSIVE"]["IVC"]["DOF"]["EIG_11"]["RECONSTRUCT"] = passives.get_array1(["IVC", "dof", "eig_11", "calculated"])
+            results["CONSTRAINTS"]["PF_PASSIVE"]["IVC"]["DOF"]["EIG_11"]["I_DIST"] = passives.get_array1(["IVC", "dof", "eig_11", "current_distribution"])
+            results["CONSTRAINTS"]["PF_PASSIVE"]["IVC"]["DOF"]["EIG_12"]["RECONSTRUCT"] = passives.get_array1(["IVC", "dof", "eig_12", "calculated"])
+            results["CONSTRAINTS"]["PF_PASSIVE"]["IVC"]["DOF"]["EIG_12"]["I_DIST"] = passives.get_array1(["IVC", "dof", "eig_12", "current_distribution"])
+            results["CONSTRAINTS"]["PF_PASSIVE"]["IVC"]["DOF"]["EIG_13"]["RECONSTRUCT"] = passives.get_array1(["IVC", "dof", "eig_13", "calculated"])
+            results["CONSTRAINTS"]["PF_PASSIVE"]["IVC"]["DOF"]["EIG_13"]["I_DIST"] = passives.get_array1(["IVC", "dof", "eig_13", "current_distribution"])
+            results["CONSTRAINTS"]["PF_PASSIVE"]["IVC"]["DOF"]["EIG_14"]["RECONSTRUCT"] = passives.get_array1(["IVC", "dof", "eig_14", "calculated"])
+            results["CONSTRAINTS"]["PF_PASSIVE"]["IVC"]["DOF"]["EIG_14"]["I_DIST"] = passives.get_array1(["IVC", "dof", "eig_14", "current_distribution"])
+            results["CONSTRAINTS"]["PF_PASSIVE"]["IVC"]["DOF"]["EIG_15"]["RECONSTRUCT"] = passives.get_array1(["IVC", "dof", "eig_15", "calculated"])
+            results["CONSTRAINTS"]["PF_PASSIVE"]["IVC"]["DOF"]["EIG_15"]["I_DIST"] = passives.get_array1(["IVC", "dof", "eig_15", "current_distribution"])
+            results["CONSTRAINTS"]["PF_PASSIVE"]["IVC"]["GEOMETRY"]["ANGLE_1"] = passives.get_array1(["IVC", "geometry", "angle_1"])
+            results["CONSTRAINTS"]["PF_PASSIVE"]["IVC"]["GEOMETRY"]["ANGLE_2"] = passives.get_array1(["IVC", "geometry", "angle_2"])
+            results["CONSTRAINTS"]["PF_PASSIVE"]["IVC"]["GEOMETRY"]["D_R"] = passives.get_array1(["IVC", "geometry", "d_r"])
+            results["CONSTRAINTS"]["PF_PASSIVE"]["IVC"]["GEOMETRY"]["D_Z"] = passives.get_array1(["IVC", "geometry", "d_z"])
+            results["CONSTRAINTS"]["PF_PASSIVE"]["IVC"]["GEOMETRY"]["R"] = passives.get_array1(["IVC", "geometry", "r"])
+            results["CONSTRAINTS"]["PF_PASSIVE"]["IVC"]["GEOMETRY"]["Z"] = passives.get_array1(["IVC", "geometry", "z"])
+        else:
+            results["CONSTRAINTS"]["PF_PASSIVE"][passive_name]["DOF"]["CONSTANT_J"]["RECONSTRUCT"] = passives.get_array1(
+                [passive_name, "dof", "constant_current_density", "calculated"]
+            )
+            results["CONSTRAINTS"]["PF_PASSIVE"][passive_name]["DOF"]["CONSTANT_J"]["I_DIST"] = passives.get_array1(
+                [passive_name, "dof", "constant_current_density", "current_distribution"]
+            )
+            results["CONSTRAINTS"]["PF_PASSIVE"][passive_name]["GEOMETRY"]["ANGLE_1"] = passives.get_array1([passive_name, "geometry", "angle_1"])
+            results["CONSTRAINTS"]["PF_PASSIVE"][passive_name]["GEOMETRY"]["ANGLE_2"] = passives.get_array1([passive_name, "geometry", "angle_2"])
+            results["CONSTRAINTS"]["PF_PASSIVE"][passive_name]["GEOMETRY"]["D_R"] = passives.get_array1([passive_name, "geometry", "d_r"])
+            results["CONSTRAINTS"]["PF_PASSIVE"][passive_name]["GEOMETRY"]["D_Z"] = passives.get_array1([passive_name, "geometry", "d_z"])
+            results["CONSTRAINTS"]["PF_PASSIVE"][passive_name]["GEOMETRY"]["R"] = passives.get_array1([passive_name, "geometry", "r"])
+            results["CONSTRAINTS"]["PF_PASSIVE"][passive_name]["GEOMETRY"]["Z"] = passives.get_array1([passive_name, "geometry", "z"])
+
+    # Scrape off layer (SOL)
+    results["SOL"]["HFS"]["CONTOUR"]["R"] = plasma.get_array2(["sol", "hfs", "contour", "r"])  # shape = [n_time, n_points]
+    results["SOL"]["HFS"]["CONTOUR"]["Z"] = plasma.get_array2(["sol", "hfs", "contour", "z"])  # shape = [n_time, n_points]
+    results["SOL"]["HFS"]["CONTOUR"]["N"] = np.array(plasma.get_vec_usize(["sol", "hfs", "contour", "n"])).astype(np.int32)  # shape = [n_time]
+    results["SOL"]["HFS"]["STRIKE_POINT"]["R"] = plasma.get_array1(["sol", "hfs", "strike_point", "r"])  # shape = [n_time]
+    results["SOL"]["HFS"]["STRIKE_POINT"]["Z"] = plasma.get_array1(["sol", "hfs", "strike_point", "z"])  # shape = [n_time]
+    results["SOL"]["LFS"]["CONTOUR"]["R"] = plasma.get_array2(["sol", "lfs", "contour", "r"])  # shape = [n_time, n_points]
+    results["SOL"]["LFS"]["CONTOUR"]["Z"] = plasma.get_array2(["sol", "lfs", "contour", "z"])  # shape = [n_time, n_points]
+    results["SOL"]["LFS"]["CONTOUR"]["N"] = np.array(plasma.get_vec_usize(["sol", "lfs", "contour", "n"])).astype(np.int32)  # shape = [n_time]
+    results["SOL"]["LFS"]["STRIKE_POINT"]["R"] = plasma.get_array1(["sol", "lfs", "strike_point", "r"])  # shape = [n_time]
+    results["SOL"]["LFS"]["STRIKE_POINT"]["Z"] = plasma.get_array1(["sol", "lfs", "strike_point", "z"])  # shape = [n_time]
+
+    if len(pressure_sensors.keys()) > 0:
+        sensor_names = list(pressure_sensors.keys())
+
+        # Per-sensor nodes (keyed by sensor name)
+        for sensor_name in sensor_names:
+            results["CONSTRAINTS"]["PRESSURE"][sensor_name]["MEASURED"] = pressure_sensors.get_array1(
+                [sensor_name, "pressure", "measured", "value"]
+            )  # shape = [n_time]
+            results["CONSTRAINTS"]["PRESSURE"][sensor_name]["RECONSTRUCT"] = pressure_sensors.get_array1(
+                [sensor_name, "pressure", "calculated", "value"]
+            )  # shape = [n_time]
+            results["CONSTRAINTS"]["PRESSURE"][sensor_name]["WEIGHT"] = pressure_sensors.get_f64([sensor_name, "fit_settings", "weight"])  # scalar
+            results["CONSTRAINTS"]["PRESSURE"][sensor_name]["POSITION"]["R"] = pressure_sensors.get_f64([sensor_name, "geometry", "r"])  # scalar
+            results["CONSTRAINTS"]["PRESSURE"][sensor_name]["POSITION"]["Z"] = pressure_sensors.get_f64([sensor_name, "geometry", "z"])  # scalar
+            results["CONSTRAINTS"]["PRESSURE"][sensor_name]["POSITION"]["PSI"] = pressure_sensors.get_array1(
+                [sensor_name, "pressure", "calculated", "psi"]
+            )  # shape = [n_time]
+
+        # ALL aggregate node
+        results["CONSTRAINTS"]["PRESSURE"]["ALL"]["MEASURED"] = pressure_sensors.get_array2(
+            ["*", "pressure", "measured", "value"]
+        )  # shape = [n_time, n_points]
+        results["CONSTRAINTS"]["PRESSURE"]["ALL"]["RECONSTRUCT"] = pressure_sensors.get_array2(
+            ["*", "pressure", "calculated", "value"]
+        )  # shape = [n_time, n_points]
+        results["CONSTRAINTS"]["PRESSURE"]["ALL"]["WEIGHT"] = pressure_sensors.get_array1(["*", "fit_settings", "weight"])  # shape = [n_points]
+        results["CONSTRAINTS"]["PRESSURE"]["ALL"]["POSITION"]["R"] = pressure_sensors.get_array1(["*", "geometry", "r"])  # shape = [n_points]
+        results["CONSTRAINTS"]["PRESSURE"]["ALL"]["POSITION"]["Z"] = pressure_sensors.get_array1(["*", "geometry", "z"])  # shape = [n_points]
+        results["CONSTRAINTS"]["PRESSURE"]["ALL"]["POSITION"]["PSI"] = pressure_sensors.get_array2(
+            ["*", "pressure", "calculated", "psi"]
+        )  # shape = [n_time, n_points]
+        results["CONSTRAINTS"]["PRESSURE"]["ALL"]["NAMES"] = np.array(sensor_names)
+
+    # Store "WORKFLOW"
+    database_reader_method = settings["GSFIT_code_settings.json"]["database_reader"]["method"]
+
+    code_names = settings["GSFIT_code_settings.json"]["database_reader"][database_reader_method]["workflow"].keys()
+
+    for code_name in code_names:
+        pulseNo_json = settings["GSFIT_code_settings.json"]["database_reader"][database_reader_method]["workflow"][code_name]["pulseNo"]
+        if pulseNo_json is not None:
+            results["INPUT"]["WORKFLOW"][code_name]["PULSE"] = pulseNo_json
+        else:
+            results["INPUT"]["WORKFLOW"][code_name]["PULSE"] = pulseNo
+
+        run_name = settings["GSFIT_code_settings.json"]["database_reader"][database_reader_method]["workflow"][code_name]["run_name"]
+        results["INPUT"]["WORKFLOW"][code_name]["RUN"] = run_name
+
+        usage = settings["GSFIT_code_settings.json"]["database_reader"][database_reader_method]["workflow"][code_name]["usage"]
+        results["INPUT"]["WORKFLOW"][code_name]["USAGE"] = usage

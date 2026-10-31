@@ -1,0 +1,191 @@
+{
+ "name": "mast_fair_v3_repro",
+ "_comment": [
+  "FAIR-MAST level2 v3 -> per-shot, per-modality float32 .npy cache (5 ms patches).",
+  "Only the seven modalities the v3 model reads; no equilibrium group is read or cached.",
+  "The original cache also held other diagnostics and EFIT++ groups that the model never used;",
+  "for every modality kept here the cached arrays are produced by the same code and settings."
+ ],
+ "patch_seconds": 0.005,
+ "reference_clocks": [
+  "magnetics/time",
+  "summary/time",
+  "pf_active/time"
+ ],
+ "plasma_current_signals": [
+  "magnetics/ip",
+  "summary/ip"
+ ],
+ "modalities": [
+  {
+   "name": "summary",
+   "kind": "timeseries",
+   "samples_per_patch": 16,
+   "signals": [
+    {
+     "path": "summary/ip"
+    },
+    {
+     "path": "summary/line_average_n_e"
+    },
+    {
+     "path": "summary/greenwald_density"
+    },
+    {
+     "path": "summary/neutron_rates_total"
+    },
+    {
+     "path": "summary/power_nbi"
+    },
+    {
+     "path": "summary/power_radiated"
+    },
+    {
+     "path": "summary/power_ohm"
+    }
+   ]
+  },
+  {
+   "name": "pf_active",
+   "kind": "timeseries",
+   "samples_per_patch": 16,
+   "signals": [
+    {
+     "path": "pf_active/coil_current"
+    },
+    {
+     "path": "pf_active/coil_voltage"
+    }
+   ]
+  },
+  {
+   "name": "magnetics_slow",
+   "kind": "timeseries",
+   "samples_per_patch": 16,
+   "signals": [
+    {
+     "path": "magnetics/ip"
+    },
+    {
+     "path": "magnetics/flux_loop_flux"
+    },
+    {
+     "path": "magnetics/b_field_pol_probe_ccbv_field"
+    },
+    {
+     "path": "magnetics/b_field_pol_probe_obr_field"
+    },
+    {
+     "path": "magnetics/b_field_pol_probe_obv_field"
+    }
+   ]
+  },
+  {
+   "name": "thomson_core",
+   "kind": "timeseries",
+   "samples_per_patch": 1,
+   "signals": [
+    {
+     "path": "thomson_scattering/n_e_core"
+    },
+    {
+     "path": "thomson_scattering/t_e_core"
+    }
+   ]
+  },
+  {
+   "name": "thomson_profiles",
+   "kind": "profile",
+   "samples_per_patch": 1,
+   "size": [
+    120
+   ],
+   "signals": [
+    {
+     "path": "thomson_scattering/n_e"
+    },
+    {
+     "path": "thomson_scattering/t_e"
+    },
+    {
+     "path": "thomson_scattering/p_e"
+    }
+   ]
+  },
+  {
+   "name": "pf_passive",
+   "kind": "timeseries",
+   "samples_per_patch": 16,
+   "signals": [
+    {
+     "path": "pf_passive/botcol_current",
+     "channel_mapping": "label"
+    },
+    {
+     "path": "pf_passive/endcrown_l_current"
+    },
+    {
+     "path": "pf_passive/endcrown_u_current"
+    },
+    {
+     "path": "pf_passive/incon_current",
+     "channel_mapping": "label"
+    },
+    {
+     "path": "pf_passive/lhorw_current",
+     "channel_mapping": "label"
+    },
+    {
+     "path": "pf_passive/mid_current",
+     "channel_mapping": "label"
+    },
+    {
+     "path": "pf_passive/p2larm_current",
+     "channel_mapping": "label"
+    },
+    {
+     "path": "pf_passive/p2ldivpl_current",
+     "channel_mapping": "label"
+    },
+    {
+     "path": "pf_passive/p2uarm_current",
+     "channel_mapping": "label"
+    },
+    {
+     "path": "pf_passive/p2udivpl_current",
+     "channel_mapping": "label"
+    },
+    {
+     "path": "pf_passive/ring_current",
+     "channel_mapping": "label"
+    },
+    {
+     "path": "pf_passive/rodgr_current",
+     "channel_mapping": "label"
+    },
+    {
+     "path": "pf_passive/topcol_current",
+     "channel_mapping": "label"
+    },
+    {
+     "path": "pf_passive/uhorw_current",
+     "channel_mapping": "label"
+    },
+    {
+     "path": "pf_passive/vertw_current",
+     "channel_mapping": "label"
+    }
+   ]
+  },
+  {
+   "name": "tf",
+   "kind": "timeseries",
+   "samples_per_patch": 16,
+   "signals": [
+    {
+     "path": "tf/coil_current"
+    }
+   ]
+  }
+ ]
+}

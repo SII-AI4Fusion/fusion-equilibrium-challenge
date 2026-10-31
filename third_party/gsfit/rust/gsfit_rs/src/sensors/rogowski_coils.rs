@@ -1,0 +1,871 @@
+use super::bp_probes::BpProbes;
+use crate::coils::Coils;
+use crate::passives::Passives;
+use crate::plasma::Plasma;
+use crate::python_pickling_methods::{data_tree_to_py_dict, py_dict_to_data_tree};
+use crate::sensors::static_and_dynamic_data_types::create_empty_sensor_data;
+use crate::sensors::static_and_dynamic_data_types::{SensorsDynamic, SensorsStatic};
+use data_tree::{AddDataTreeGetters, DataTree, DataTreeAccumulator};
+use geo::{Contains, Coord, LineString, Point, Polygon};
+use ndarray::{Array1, Array2, Array3, Axis, s};
+use numpy::IntoPyArray;
+use numpy::PyArrayMethods;
+use numpy::borrow::PyReadonlyArray1;
+use numpy::{PyArray1, PyArray2, PyArray3};
+use pyo3::exceptions::PyTypeError;
+use pyo3::prelude::*;
+use pyo3::types::{PyDict, PyList};
+use std::f64::consts::PI;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+const MU_0: f64 = physical_constants::VACUUM_MAG_PERMEABILITY;
+
+#[derive(Clone, AddDataTreeGetters)]
+#[pyclass(module = "gsfit_rs", skip_from_py_object)]
+pub struct RogowskiCoils {
+    pub results: DataTree,
+}
+
+impl Default for RogowskiCoils {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Python accessible methods
+#[pymethods]
+impl RogowskiCoils {
+    #[new]
+    pub fn new() -> Self {
+        Self { results: DataTree::new() }
+    }
+
+    /// Add a Rogowski coil sensor
+    ///
+    ///  # Arguments
+    /// * `name` - Name of the sensor
+    /// * `r` - R coordinate of the sensor, metre
+    /// * `z` - Z coordinate of the sensor, metre
+    /// * `fit_settings_comment` - Comment about the sensor
+    /// * `fit_settings_expected_value` - Expected value of the sensor when the plasma current is zero, ampere
+    /// * `fit_settings_include` - Whether to include this sensor in the fitting
+    /// * `fit_settings_weight` - Weighting of this sensor in the fitting
+    /// * `time` - Time array for the measurements, seconds
+    /// * `measured` - Measured values of the sensor, ampere
+    /// * `gaps_r` - R coordinate of the gaps, metre
+    /// * `gaps_z` - Z coordinate of the gaps, metre
+    /// * `gaps_d_r` - Half width of the gaps in R, metre
+    /// * `gaps_d_z` - Half height of the gaps in Z, metre
+    /// * `gaps_name` - Name of the gaps
+    ///
+    /// # Data structure:
+    /// ```ignore
+    /// [probe_name]["psi"]["calculated"]                               = Array1<f64>;  shape=[n_time]
+    /// [probe_name]["psi"]["measured"]                                 = Array1<f64>;  shape=[n_time]
+    /// [probe_name]["fit_settings"]["comment"]                         = str
+    /// [probe_name]["fit_settings"]["expected_value"]                  = f64
+    /// [probe_name]["fit_settings"]["include"]                         = bool
+    /// [probe_name]["fit_settings"]["weight"]                          = f64
+    /// [probe_name]["geometry"]["r"]                                   = f64
+    /// [probe_name]["geometry"]["z"]                                   = f64
+    /// [probe_name]["greens"]["d_plasma_d_z"]                          = Array1;  shape=[n_z * n_r]
+    /// [probe_name]["greens"]["passives"][passive_name][dof_name]      = f64
+    /// [probe_name]["greens"]["pf"][pf_name]                           = f64
+    /// [probe_name]["greens"]["plasma"]                                = Array1;  shape=[n_z * n_r]
+    /// ```
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_sensor(
+        &mut self,
+        name: &str,
+        r: PyReadonlyArray1<f64>,
+        z: PyReadonlyArray1<f64>,
+        fit_settings_comment: String,
+        fit_settings_expected_value: f64,
+        fit_settings_include: bool,
+        fit_settings_weight: f64,
+        time: PyReadonlyArray1<f64>,
+        measured: PyReadonlyArray1<f64>,
+        gaps_r: PyReadonlyArray1<f64>,
+        gaps_z: PyReadonlyArray1<f64>,
+        gaps_d_r: PyReadonlyArray1<f64>,
+        gaps_d_z: PyReadonlyArray1<f64>,
+        gaps_name: Vec<String>,
+    ) {
+        // Convert to Rust data types
+        let r_ndarray: Array1<f64> = r.to_owned_array();
+        let z_ndarray: Array1<f64> = z.to_owned_array();
+        let time_ndarray: Array1<f64> = time.to_owned_array();
+        let measured_ndarray: Array1<f64> = measured.to_owned_array();
+        let gaps_r_ndarray: Array1<f64> = gaps_r.to_owned_array();
+        let gaps_z_ndarray: Array1<f64> = gaps_z.to_owned_array();
+        let gaps_d_r_ndarray: Array1<f64> = gaps_d_r.to_owned_array();
+        let gaps_d_z_ndarray: Array1<f64> = gaps_d_z.to_owned_array();
+        let n_gaps: usize = gaps_r_ndarray.len();
+
+        // Add gaps
+        for i_gap in 0..n_gaps {
+            let gap_r_start: f64 = gaps_r_ndarray[i_gap] - gaps_d_r_ndarray[i_gap];
+            let gap_r_end: f64 = gaps_r_ndarray[i_gap] + gaps_d_r_ndarray[i_gap];
+            let gap_z_start: f64 = gaps_z_ndarray[i_gap] - gaps_d_z_ndarray[i_gap];
+            let gap_z_end: f64 = gaps_z_ndarray[i_gap] + gaps_d_z_ndarray[i_gap];
+            let gap_name: &str = &gaps_name[i_gap];
+
+            self.results
+                .get_or_insert(name)
+                .get_or_insert("geometry")
+                .get_or_insert("gaps")
+                .get_or_insert(&gap_name)
+                .insert("r_start", gap_r_start);
+            self.results
+                .get_or_insert(name)
+                .get_or_insert("geometry")
+                .get_or_insert("gaps")
+                .get_or_insert(&gap_name)
+                .insert("r_end", gap_r_end);
+            self.results
+                .get_or_insert(name)
+                .get_or_insert("geometry")
+                .get_or_insert("gaps")
+                .get_or_insert(&gap_name)
+                .insert("z_start", gap_z_start);
+            self.results
+                .get_or_insert(name)
+                .get_or_insert("geometry")
+                .get_or_insert("gaps")
+                .get_or_insert(&gap_name)
+                .insert("z_end", gap_z_end);
+        }
+
+        // Geometry
+        self.results.get_or_insert(name).get_or_insert("geometry").insert("r", r_ndarray);
+        self.results.get_or_insert(name).get_or_insert("geometry").insert("z", z_ndarray);
+
+        // // Gaps
+        // self.results.get_or_insert(name).get_or_insert("geometry").get_or_insert("gaps").insert("r", gap_r_ndarray);
+        // self.results.get_or_insert(name).get_or_insert("geometry").get_or_insert("gaps").insert("z", gap_z_ndarray);
+        // self.results.get_or_insert(name).get_or_insert("geometry").get_or_insert("gaps").insert("d_r", gap_d_r_ndarray);
+        // self.results.get_or_insert(name).get_or_insert("geometry").get_or_insert("gaps").insert("d_z", gap_d_z_ndarray);
+
+        // Fit settings
+        self.results
+            .get_or_insert(name)
+            .get_or_insert("fit_settings")
+            .insert("comment", fit_settings_comment);
+        self.results
+            .get_or_insert(name)
+            .get_or_insert("fit_settings")
+            .insert("expected_value", fit_settings_expected_value);
+        self.results
+            .get_or_insert(name)
+            .get_or_insert("fit_settings")
+            .insert("include", fit_settings_include);
+        self.results
+            .get_or_insert(name)
+            .get_or_insert("fit_settings")
+            .insert("weight", fit_settings_weight);
+
+        // Measurements
+        self.results
+            .get_or_insert(name)
+            .get_or_insert("i")
+            .get_or_insert("experimental")
+            .insert("time", time_ndarray);
+        self.results
+            .get_or_insert(name)
+            .get_or_insert("i")
+            .get_or_insert("experimental")
+            .insert("value", measured_ndarray);
+    }
+
+    ///
+    fn greens_with_coils(&mut self, coils: PyRef<Coils>) {
+        // Change Python type into Rust
+        let coils_local: &Coils = &coils;
+
+        for sensor_name in self.results.keys() {
+            // Rogowski path
+            let sensor_r: Array1<f64> = self.results.get(&sensor_name).get("geometry").get("r").unwrap_array1();
+            let sensor_z: Array1<f64> = self.results.get(&sensor_name).get("geometry").get("z").unwrap_array1();
+            let n_sensor_points: usize = sensor_r.len();
+
+            // Gap names
+            let gap_names: Vec<String> = self.results.get(&sensor_name).get("geometry").get("gaps").keys();
+            let n_gaps: usize = gap_names.len();
+
+            // Collect the coordinates
+            let mut rogowski_coordinates: Vec<Coord<f64>> = Vec::with_capacity(n_sensor_points);
+            for i_sensor_point in 0..n_sensor_points {
+                rogowski_coordinates.push(Coord {
+                    x: sensor_r[i_sensor_point],
+                    y: sensor_z[i_sensor_point],
+                });
+            }
+
+            // Construct the contour
+            let rogowski_contour: Polygon = Polygon::new(
+                LineString::new(rogowski_coordinates),
+                vec![], // No holes
+            );
+
+            let pf_coil_names: Vec<String> = coils_local.results.get("pf").keys();
+            let n_pf: usize = pf_coil_names.len();
+            for i_pf in 0..n_pf {
+                let pf_coil_name: String = pf_coil_names[i_pf].clone();
+
+                let coil_r: Array1<f64> = coils.results.get("pf").get(&pf_coil_name).get("geometry").get("r").unwrap_array1();
+                let coil_z: Array1<f64> = coils.results.get("pf").get(&pf_coil_name).get("geometry").get("z").unwrap_array1();
+                let n_filaments: usize = coil_r.len();
+
+                let mut g_with_pf: f64 = 0.0;
+                for i_filament in 0..n_filaments {
+                    let test_point: Point = Point::new(coil_r[i_filament], coil_z[i_filament]);
+                    let inside: bool = rogowski_contour.contains(&test_point);
+                    if inside {
+                        g_with_pf += 1.0;
+                    }
+                }
+
+                // Calculate the greens for the gaps (needed for later)
+                // TODO: this is wasteful as we are re-calculating the same thing
+                // (at least there are not many PF coils. but still not good...)
+                let mut g_gap: f64 = 0.0;
+                for i_gap in 0..n_gaps {
+                    let gap_name: String = gap_names[i_gap].clone(); // TODO: is there a better way than cloning here?
+
+                    // Construct virtual bp probes
+                    let (mut virtual_b_r_probes, mut virtual_b_z_probes, gap_virtual_d_r, gap_virtual_d_z): (BpProbes, BpProbes, f64, f64) =
+                        self.construct_virtual_bp_probes(&sensor_name, &gap_name);
+
+                    // Calculate Greens betwen the virtual bp-probes and the coils
+                    virtual_b_r_probes.greens_with_coils_rs(coils.clone());
+                    virtual_b_z_probes.greens_with_coils_rs(coils.clone());
+
+                    let g_gaps_b_r: Array1<f64> = virtual_b_r_probes.results.get("*").get("greens").get("pf").get(&pf_coil_name).unwrap_array1(); // shape = [n_virtual_bp_probes]
+                    let g_gaps_b_z: Array1<f64> = virtual_b_z_probes.results.get("*").get("greens").get("pf").get(&pf_coil_name).unwrap_array1();
+
+                    let n_virtual_bp_probes: usize = g_gaps_b_r.len();
+
+                    g_gap += g_gaps_b_r[0] * 0.5 * gap_virtual_d_r + g_gaps_b_z[0] * 0.5 * gap_virtual_d_z;
+                    for i_virtual_bp_probe in 1..n_virtual_bp_probes - 1 {
+                        g_gap += g_gaps_b_r[i_virtual_bp_probe] * gap_virtual_d_r + g_gaps_b_z[i_virtual_bp_probe] * gap_virtual_d_z;
+                    }
+                    g_gap += g_gaps_b_r[n_virtual_bp_probes - 1] * 0.5 * gap_virtual_d_r + g_gaps_b_z[n_virtual_bp_probes - 1] * 0.5 * gap_virtual_d_z;
+                }
+
+                // Add the gap contribution
+                g_with_pf -= g_gap / MU_0;
+
+                // Store
+                self.results
+                    .get_or_insert(&sensor_name)
+                    .get_or_insert("greens")
+                    .get_or_insert("pf")
+                    .insert(&pf_coil_name, g_with_pf);
+            }
+        }
+    }
+
+    ///
+    fn greens_with_passives(&mut self, passives: PyRef<Passives>) {
+        // Change Python type into Rust
+        let passives_local: &Passives = &passives;
+
+        for sensor_name in self.results.keys() {
+            // Get variables out of self
+            let sensor_r: Array1<f64> = self.results.get(&sensor_name).get("geometry").get("r").unwrap_array1();
+            let sensor_z: Array1<f64> = self.results.get(&sensor_name).get("geometry").get("z").unwrap_array1();
+            let n_sensor_points: usize = sensor_r.len();
+
+            // Gap names
+            let gap_names: Vec<String> = self.results.get(&sensor_name).get("geometry").get("gaps").keys();
+
+            // Collect the coordinates
+            let mut rogowski_coordinates: Vec<Coord<f64>> = Vec::with_capacity(n_sensor_points);
+            for i_sensor_point in 0..n_sensor_points {
+                rogowski_coordinates.push(Coord {
+                    x: sensor_r[i_sensor_point],
+                    y: sensor_z[i_sensor_point],
+                });
+            }
+
+            // Construct the contour
+            let rogowski_contour: Polygon = Polygon::new(
+                LineString::new(rogowski_coordinates),
+                vec![], // No holes
+            );
+
+            // Calculate Greens with each passive degree of freedom
+            for passive_name in passives_local.results.keys() {
+                let _tmp: DataTreeAccumulator<'_> = passives_local.results.get(&passive_name).get("dof");
+                let dof_names: Vec<String> = _tmp.keys();
+                let passive_r: Array1<f64> = passives_local.results.get(&passive_name).get("geometry").get("r").unwrap_array1();
+                let passive_z: Array1<f64> = passives_local.results.get(&passive_name).get("geometry").get("z").unwrap_array1();
+
+                let n_filaments: usize = passive_r.len();
+
+                let mut inside_vec: Array1<f64> = Array1::zeros(n_filaments);
+                // Loop over all passive filaments
+                for i_filament in 0..n_filaments {
+                    let test_point: Point = Point::new(passive_r[i_filament], passive_z[i_filament]);
+                    let inside: bool = rogowski_contour.contains(&test_point);
+                    if inside {
+                        inside_vec[i_filament] = 1.0;
+                    }
+                }
+
+                for dof_name in dof_names {
+                    let current_distribution: Array1<f64> = passives_local
+                        .results
+                        .get(&passive_name)
+                        .get("dof")
+                        .get(&dof_name)
+                        .get("current_distribution")
+                        .unwrap_array1();
+
+                    let g_all: Array1<f64> = &inside_vec * current_distribution;
+
+                    // Calculate the greens for the gaps (needed for later)
+                    // TODO: this is wasteful as we are re-calculating the same thing
+                    // (at least there are not many PF coils. but still not good...)
+                    let mut g_gap: f64 = 0.0;
+                    for gap_name in &gap_names {
+                        // Construct virtual bp probes
+                        let (mut virtual_b_r_probes, mut virtual_b_z_probes, gap_virtual_d_r, gap_virtual_d_z) =
+                            self.construct_virtual_bp_probes(&sensor_name, gap_name);
+
+                        // Calculate Greens betwen the virtual bp-probes and the coils
+                        virtual_b_r_probes.greens_with_passives_rs(passives_local.clone());
+                        virtual_b_z_probes.greens_with_passives_rs(passives_local.clone());
+
+                        let g_gaps_b_r: Array1<f64> = virtual_b_r_probes
+                            .results
+                            .get("*")
+                            .get("greens")
+                            .get("passives")
+                            .get(&passive_name)
+                            .get(&dof_name)
+                            .unwrap_array1(); // shape = [n_virtual_bp_probes]
+                        let g_gaps_b_z: Array1<f64> = virtual_b_z_probes
+                            .results
+                            .get("*")
+                            .get("greens")
+                            .get("passives")
+                            .get(&passive_name)
+                            .get(&dof_name)
+                            .unwrap_array1(); // shape = [n_virtual_bp_probes]
+
+                        let n_virtual_bp_probes: usize = virtual_b_z_probes.results.keys().len();
+
+                        g_gap += g_gaps_b_r[0] * 0.5 * gap_virtual_d_r + g_gaps_b_z[0] * 0.5 * gap_virtual_d_z;
+                        for i_virtual_bp_probe in 1..n_virtual_bp_probes - 1 {
+                            g_gap += g_gaps_b_r[i_virtual_bp_probe] * gap_virtual_d_r + g_gaps_b_z[i_virtual_bp_probe] * gap_virtual_d_z;
+                        }
+                        g_gap += g_gaps_b_r[n_virtual_bp_probes - 1] * 0.5 * gap_virtual_d_r + g_gaps_b_z[n_virtual_bp_probes - 1] * 0.5 * gap_virtual_d_z;
+                    }
+
+                    // Sum over all pasive filaments
+                    let g_with_passives: f64 = g_all.sum() - g_gap / MU_0;
+
+                    // Store
+                    self.results
+                        .get_or_insert(&sensor_name)
+                        .get_or_insert("greens")
+                        .get_or_insert("passives")
+                        .get_or_insert(&passive_name)
+                        .insert(&dof_name, g_with_passives);
+                }
+            }
+        }
+    }
+
+    fn greens_with_plasma(&mut self, plasma: PyRef<Plasma>) {
+        // Change Python type into Rust
+        let plasma_local: &Plasma = &plasma;
+
+        let plasma_r: Array1<f64> = plasma_local.results.get("grid").get("flat").get("r").unwrap_array1();
+        let plasma_z: Array1<f64> = plasma_local.results.get("grid").get("flat").get("z").unwrap_array1();
+        let n_rz: usize = plasma_r.len();
+
+        for sensor_name in self.results.keys() {
+            let sensor_r: Array1<f64> = self.results.get(&sensor_name).get("geometry").get("r").unwrap_array1();
+            let sensor_z: Array1<f64> = self.results.get(&sensor_name).get("geometry").get("z").unwrap_array1();
+            let n_sensor_points: usize = sensor_r.len();
+
+            // Gap names
+            let gap_names: Vec<String> = self.results.get(&sensor_name).get("geometry").get("gaps").keys();
+
+            // Collect the coordinates
+            let mut rogowski_coordinates: Vec<Coord<f64>> = Vec::with_capacity(n_sensor_points);
+            for i_sensor_point in 0..n_sensor_points {
+                rogowski_coordinates.push(Coord {
+                    x: sensor_r[i_sensor_point],
+                    y: sensor_z[i_sensor_point],
+                });
+            }
+
+            // Construct the contour
+            let rogowski_contour: Polygon = Polygon::new(
+                LineString::new(rogowski_coordinates),
+                vec![], // No holes
+            );
+
+            // Loop over plasma grid to see which grid points are inside the Rogowski
+            let mut g_with_plasma: Array1<f64> = Array1::zeros(n_rz);
+            for i_rz in 0..n_rz {
+                let test_point: Point = Point::new(plasma_r[i_rz], plasma_z[i_rz]);
+                let inside: bool = rogowski_contour.contains(&test_point);
+                if inside {
+                    g_with_plasma[i_rz] = 1.0;
+                }
+            }
+
+            // Calculate the greens for the gaps (needed for later)
+            // TODO: this is wasteful as we are re-calculating the same thing
+            // (at least there are not many PF coils. but still not good...)
+            let mut g_gap: Array1<f64> = Array1::zeros(n_rz);
+            let mut g_gap_d_plasma_d_z: Array1<f64> = Array1::zeros(n_rz);
+            for gap_name in &gap_names {
+                // Construct virtual bp probes
+                let (mut virtual_b_r_probes, mut virtual_b_z_probes, gap_virtual_d_r, gap_virtual_d_z) =
+                    self.construct_virtual_bp_probes(&sensor_name, gap_name);
+
+                // Calculate Greens betwen the virtual bp-probes and the coils
+                virtual_b_r_probes.greens_with_plasma_rs(plasma.clone());
+                virtual_b_z_probes.greens_with_plasma_rs(plasma.clone());
+
+                let g_gaps_b_r: Array2<f64> = virtual_b_r_probes.results.get("*").get("greens").get("plasma").unwrap_array2(); // shape = [n_z * n_r, n_virtual_bp_probes]
+                let g_gaps_b_z: Array2<f64> = virtual_b_z_probes.results.get("*").get("greens").get("plasma").unwrap_array2();
+
+                let n_virtual_bp_probes: usize = virtual_b_z_probes.results.keys().len();
+
+                g_gap = g_gap + g_gaps_b_r.slice(s![.., 0]).to_owned() * 0.5 * gap_virtual_d_r + g_gaps_b_z.slice(s![.., 0]).to_owned() * 0.5 * gap_virtual_d_z;
+                for i_virtual_bp_probe in 1..n_virtual_bp_probes - 1 {
+                    g_gap = g_gap
+                        + g_gaps_b_r.slice(s![.., i_virtual_bp_probe]).to_owned() * gap_virtual_d_r
+                        + g_gaps_b_z.slice(s![.., i_virtual_bp_probe]).to_owned() * gap_virtual_d_z;
+                }
+                g_gap = g_gap
+                    + g_gaps_b_r.slice(s![.., n_virtual_bp_probes - 1]).to_owned() * 0.5 * gap_virtual_d_r
+                    + g_gaps_b_z.slice(s![.., n_virtual_bp_probes - 1]).to_owned() * 0.5 * gap_virtual_d_z;
+
+                // d(plasma)/d(z) for vertical stability
+                let g_gap_d_plasma_d_z_radial: Array2<f64> = virtual_b_r_probes.results.get("*").get("greens").get("d_plasma_d_z").unwrap_array2(); // shape = [n_z * n_r, n_virtual_bp_probes]
+                let g_gap_d_plasma_d_z_vertical: Array2<f64> = virtual_b_z_probes.results.get("*").get("greens").get("d_plasma_d_z").unwrap_array2();
+
+                g_gap_d_plasma_d_z = g_gap_d_plasma_d_z
+                    + g_gap_d_plasma_d_z_radial.slice(s![.., 0]).to_owned() * 0.5 * gap_virtual_d_r
+                    + g_gap_d_plasma_d_z_vertical.slice(s![.., 0]).to_owned() * 0.5 * gap_virtual_d_z;
+                for i_virtual_bp_probe in 1..n_virtual_bp_probes - 1 {
+                    g_gap_d_plasma_d_z = g_gap_d_plasma_d_z
+                        + g_gap_d_plasma_d_z_radial.slice(s![.., i_virtual_bp_probe]).to_owned() * gap_virtual_d_r
+                        + g_gap_d_plasma_d_z_vertical.slice(s![.., i_virtual_bp_probe]).to_owned() * gap_virtual_d_z;
+                }
+                g_gap_d_plasma_d_z = g_gap_d_plasma_d_z
+                    + g_gap_d_plasma_d_z_radial.slice(s![.., n_virtual_bp_probes - 1]).to_owned() * 0.5 * gap_virtual_d_r
+                    + g_gap_d_plasma_d_z_vertical.slice(s![.., n_virtual_bp_probes - 1]).to_owned() * 0.5 * gap_virtual_d_z;
+            }
+
+            // Add the gap contribution
+            g_with_plasma = g_with_plasma - g_gap / MU_0;
+
+            // Store greens
+            self.results.get_or_insert(&sensor_name).get_or_insert("greens").insert("plasma", g_with_plasma);
+
+            // Vertical stability
+            let g_d_plasma_d_z: Array1<f64> = Array1::zeros(n_rz) - g_gap_d_plasma_d_z / MU_0;
+
+            // Store
+            // TODO: should I reshape to Array2 [n_z, n_r] ????
+            self.results
+                .get_or_insert(&sensor_name)
+                .get_or_insert("greens")
+                .insert("d_plasma_d_z", g_d_plasma_d_z);
+        }
+    }
+
+    fn calculate_sensor_values(&mut self, coils: PyRef<Coils>, passives: PyRef<Passives>, plasma: PyRef<Plasma>) {
+        // Convert Python types into Rust
+        let coils_rs: &Coils = &coils;
+        let passives_rs: &Passives = &passives;
+        let plasma_rs: &Plasma = &plasma;
+
+        // Run the Rust method
+        self.calculate_sensor_values_rs(coils_rs, passives_rs, plasma_rs);
+    }
+
+    /// Print to screen, to be used within Python
+    fn __repr__(&self) -> String {
+        let version: &str = env!("CARGO_PKG_VERSION");
+
+        let mut string_output = String::from("╔═════════════════════════════════════════════════════════════════════════════╗\n");
+        string_output += &format!("║  {:<74} ║\n", " <gsfit_rs.RogowskiCoils>");
+        string_output += &format!("║  {:<74} ║\n", version);
+
+        // n_sensors = self.results
+        let n_sensors: usize = self.results.keys().len();
+        string_output += &format!("║ {:<74} ║\n", format!(" n_sensors = {}", n_sensors.to_string()));
+
+        string_output.push_str("╚═════════════════════════════════════════════════════════════════════════════╝");
+
+        string_output
+    }
+
+    /// Python pickling method
+    fn __getstate__(&self, py: Python) -> PyResult<Py<PyAny>> {
+        let state_dict: Bound<'_, PyDict> = PyDict::new(py);
+        let results_dict: Py<PyDict> = data_tree_to_py_dict(py, &self.results).expect("Failed to convert DataTree to PyDict");
+        state_dict.set_item("results", results_dict).expect("Failed to add `results` key to dictionary");
+        state_dict
+            .set_item("version", env!("CARGO_PKG_VERSION"))
+            .expect("Failed to add `version` key to dictionary");
+        let system_time_now: SystemTime = SystemTime::now();
+        let datetime: f64 = system_time_now
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs_f64())
+            .expect("Failed to get current datetime");
+        state_dict
+            .set_item("pickled_datetime", datetime)
+            .expect("Failed to add `pickled_datetime` key to dictionary");
+        Ok(state_dict.into())
+    }
+
+    /// Python unpickling method
+    fn __setstate__(&mut self, state: Bound<'_, PyDict>) -> PyResult<()> {
+        let current_version: &str = env!("CARGO_PKG_VERSION");
+        let pickled_version: String = state
+            .get_item("version")
+            .ok()
+            .flatten()
+            .and_then(|v| v.extract::<String>().ok())
+            .expect("Pickled RogowskiCoils object has no version information");
+        if pickled_version != current_version {
+            eprintln!(
+                "Warning: Unpickling RogowskiCoils object created with gsfit_rs v{}, but current version is v{}",
+                pickled_version, current_version
+            );
+        }
+        let results_dict: Bound<'_, PyAny> = state
+            .get_item("results")
+            .expect("Missing 'results' key in pickled data")
+            .ok_or_else(|| PyTypeError::new_err("Missing 'results' key in pickled data"))
+            .expect("Failed to get `results` from pickled data");
+        let results_dict_bound: &Bound<'_, PyDict> = results_dict.cast::<PyDict>().expect("Failed to downcast `results` to PyDict");
+        self.results = py_dict_to_data_tree(results_dict_bound).expect("Failed to convert PyDict to DataTree");
+        Ok(())
+    }
+}
+
+// Rust only methods
+impl RogowskiCoils {
+    pub fn construct_virtual_bp_probes(&self, rogowski_name: &str, gap_name: &str) -> (BpProbes, BpProbes, f64, f64) {
+        // Return structures
+        let mut virtual_b_r_probes: BpProbes = BpProbes::new();
+        let mut virtual_b_z_probes: BpProbes = BpProbes::new();
+
+        // Get the number of gaps
+        let gap_names: Vec<String> = self.results.get(rogowski_name).get("geometry").get("gaps").keys();
+
+        // Exit if there are no gaps for the Rogowski coil
+        let n_gaps: usize = gap_names.len();
+        if n_gaps == 0 {
+            return (virtual_b_r_probes, virtual_b_z_probes, 0.0, 0.0);
+        }
+
+        // Gap start and end
+        let gap_r_start: f64 = self
+            .results
+            .get(rogowski_name)
+            .get("geometry")
+            .get("gaps")
+            .get(gap_name)
+            .get("r_start")
+            .unwrap_f64();
+        let gap_r_end: f64 = self
+            .results
+            .get(rogowski_name)
+            .get("geometry")
+            .get("gaps")
+            .get(gap_name)
+            .get("r_end")
+            .unwrap_f64();
+        let gap_z_start: f64 = self
+            .results
+            .get(rogowski_name)
+            .get("geometry")
+            .get("gaps")
+            .get(gap_name)
+            .get("z_start")
+            .unwrap_f64();
+        let gap_z_end: f64 = self
+            .results
+            .get(rogowski_name)
+            .get("geometry")
+            .get("gaps")
+            .get(gap_name)
+            .get("z_end")
+            .unwrap_f64();
+
+        // Number of virtual bp-probes to calculate the integral `b*d_l`
+        let n_virtual_bp_probes: usize = 50;
+
+        // Location to create virtual bp_probes
+        let chord_r: Array1<f64> = Array1::linspace(gap_r_start, gap_r_end, n_virtual_bp_probes);
+        let chord_z: Array1<f64> = Array1::linspace(gap_z_start, gap_z_end, n_virtual_bp_probes);
+
+        let chord_d_r: f64 = chord_r[1] - chord_r[0];
+        let chord_d_z: f64 = chord_z[1] - chord_z[0];
+
+        // Add to virtual b_r probes
+        for i_vitual_bp_probe in 0..n_virtual_bp_probes {
+            let virtual_b_r_probe_name: String = format!("virtual_b_r_gap={}_sensor={}", gap_name, i_vitual_bp_probe);
+            virtual_b_r_probes.add_sensor_rs(
+                &virtual_b_r_probe_name,
+                0.0, // horizontal = b_r
+                chord_r[i_vitual_bp_probe],
+                chord_z[i_vitual_bp_probe],
+                "no comment".to_string(),
+                0.0,
+                true,
+                1.0,
+                Array1::zeros(0),
+                Array1::zeros(0),
+            );
+        }
+
+        // Add to virtual b_z probes
+        for i_virtual_bp_probe in 0..n_virtual_bp_probes {
+            let virtual_b_z_probe_name: String = format!("virtual_b_z_gap={}_sensor={}", gap_name, i_virtual_bp_probe);
+            virtual_b_z_probes.add_sensor_rs(
+                &virtual_b_z_probe_name,
+                PI / 2.0, // vertical = b_z
+                chord_r[i_virtual_bp_probe],
+                chord_z[i_virtual_bp_probe],
+                "no comment".to_string(),
+                0.0,
+                true,
+                1.0,
+                Array1::zeros(0),
+                Array1::zeros(0),
+            );
+        }
+
+        // Return virtual bp probes
+        (virtual_b_r_probes, virtual_b_z_probes, chord_d_r, chord_d_z)
+    }
+
+    /// This splits the RogowskiCoils into:
+    /// 1.) Static (non time-dependent) object. Note, it is here that the sensors are down-selected, based on ["fit_settings"]["include"]
+    /// 2.) A Vec of time-dependent objects. Note, the length of the Vec is the number of time-slices we want to reconstruct
+    pub fn split_into_static_and_dynamic(&mut self, times_to_reconstruct: &Array1<f64>) -> (Vec<SensorsStatic>, Vec<SensorsDynamic>) {
+        let n_time: usize = times_to_reconstruct.len();
+
+        // Vector of boolean's to say if we use the sensor or not
+        let include: Vec<bool> = self.results.get("*").get("fit_settings").get("include").unwrap_vec_bool();
+
+        // Convert from boolean to indices
+        let include_indices: Vec<usize> = include
+            .iter()
+            .enumerate()
+            .filter(|(_, include)| **include) // Filter for `true` values
+            .map(|(i, _)| i) // Extract the indices
+            .collect(); // Collect into a Vec
+
+        // Sensor names
+        let sensor_names_all: Vec<String> = self.results.keys();
+        let n_sensors_all: usize = sensor_names_all.len();
+        // Down select sensor names
+        let sensor_names: Vec<String> = include_indices.iter().map(|&index| sensor_names_all[index].clone()).collect();
+        let n_sensors: usize = sensor_names.len();
+
+        // If there are no sensors selected, return empty data
+        if n_sensors == 0 {
+            let (static_data_empty, dynamic_data_empty): (SensorsStatic, SensorsDynamic) = create_empty_sensor_data();
+            let static_data_empty_vs_time: Vec<SensorsStatic> = vec![static_data_empty; n_time];
+            let dynamic_data_empty_vs_time: Vec<SensorsDynamic> = vec![dynamic_data_empty; n_time];
+            return (static_data_empty_vs_time, dynamic_data_empty_vs_time);
+        }
+
+        // Fit settings
+        // Weight
+        let fit_settings_weight: Array1<f64> = self.results.get("*").get("fit_settings").get("weight").unwrap_array1();
+        let fit_settings_weight: Array1<f64> = fit_settings_weight.select(Axis(0), &include_indices);
+        // Expected value
+        let fit_settings_expected_value: Array1<f64> = self.results.get("*").get("fit_settings").get("expected_value").unwrap_array1();
+        let fit_settings_expected_value: Array1<f64> = fit_settings_expected_value.select(Axis(0), &include_indices);
+
+        // Greens
+        // With PF coils
+        let greens_with_pf: Array2<f64> = self.results.get("*").get("greens").get("pf").get("*").unwrap_array2(); // shape = [n_pf, n_sensors]
+        let greens_with_pf: Array2<f64> = greens_with_pf.select(Axis(1), &include_indices); // downselect to only the sensors needed; shape = [n_pf, n_sensors]
+        // With plasma
+        let greens_with_grid: Array2<f64> = self.results.get("*").get("greens").get("plasma").unwrap_array2(); // shape = [n_z * n_r, n_sensors]
+        let greens_with_grid: Array2<f64> = greens_with_grid.select(Axis(1), &include_indices); // downselect to only the sensors needed; shape = [n_pf, n_sensors]
+        // With d_sensor_dz (for vertical stability)
+        let greens_d_sensor_dz: Array2<f64> = self.results.get("*").get("greens").get("d_plasma_d_z").unwrap_array2(); // shape = [n_z * n_r, n_sensors]
+        let greens_d_sensor_dz: Array2<f64> = greens_d_sensor_dz.select(Axis(1), &include_indices); // downselect to only the sensors needed; shape = [n_z * n_r, n_sensors]
+
+        // With passives
+        let passive_names: Vec<String> = self.results.get(&sensor_names[0]).get("greens").get("passives").keys();
+        let n_passives: usize = passive_names.len();
+
+        // Count the number of degrees of freedom
+        let mut n_dof_total: usize = 0;
+        for passive_name in &passive_names {
+            let dof_names: Vec<String> = self.results.get(&sensor_names[0]).get("greens").get("passives").get(passive_name).keys();
+            n_dof_total += dof_names.len();
+        }
+
+        let mut greens_with_passives: Array2<f64> = Array2::from_elem((n_dof_total, n_sensors), f64::NAN);
+
+        // let mut dof_names_total: Vec<String> = Vec::with_capacity(n_dof_total);
+        for i_sensor in 0..n_sensors {
+            let mut i_dof_total: usize = 0;
+            for i_passive in 0..n_passives {
+                let passive_name: &str = &passive_names[i_passive];
+                let dof_names: Vec<String> = self.results.get(&sensor_names[0]).get("greens").get("passives").get(passive_name).keys(); // something like ["eig01", "eig02", ...]
+                for dof_name in &dof_names {
+                    greens_with_passives[(i_dof_total, i_sensor)] = self
+                        .results
+                        .get(&sensor_names[i_sensor])
+                        .get("greens")
+                        .get("passives")
+                        .get(passive_name)
+                        .get(dof_name)
+                        .unwrap_f64();
+
+                    // Store the name
+                    // dof_names_total[i_dof_total] = dof_name;
+
+                    // Keep count
+                    i_dof_total += 1;
+                }
+            }
+        }
+
+        // Create the `SensorsStatic` data
+        let results_static: SensorsStatic = SensorsStatic {
+            greens_with_grid,
+            greens_with_pf,
+            greens_with_passives,
+            greens_d_sensor_dz,
+            fit_settings_weight,
+            fit_settings_expected_value,
+            geometry_r: Array1::from_elem(n_sensors, f64::NAN), // not used for RogowskiCoils
+            geometry_z: Array1::from_elem(n_sensors, f64::NAN), // not used for RogowskiCoils
+        };
+
+        // Time dependent
+        // Interpolate all sensors to `times_to_reconstruct`
+        let mut measured: Array2<f64> = Array2::from_elem((n_sensors_all, n_time), f64::NAN);
+        for i_sensor in 0..n_sensors_all {
+            // Sensor names
+            let sensor_name: &str = &sensor_names_all[i_sensor];
+
+            // Measured values
+            let experimental_time: Array1<f64> = self.results.get(sensor_name).get("i").get("experimental").get("time").unwrap_array1();
+            let experimental_values: Array1<f64> = self.results.get(sensor_name).get("i").get("experimental").get("value").unwrap_array1();
+
+            // Create the interpolator
+            let interpolator: interpolation::Dim1Linear = interpolation::Dim1Linear::new(experimental_time.clone(), experimental_values.clone())
+                .expect("RogowskiCoils.split_into_static_and_dynamic: Can't make interpolator");
+            // Do the interpolation
+            let measured_this_coil: Array1<f64> = interpolator
+                .interpolate_array1(times_to_reconstruct)
+                .expect("RogowskiCoils.split_into_static_and_dynamic: Can't do interpolation");
+
+            // Store for later
+            measured.slice_mut(s![i_sensor, ..]).assign(&measured_this_coil);
+
+            // Store in self
+            self.results
+                .get_or_insert(sensor_name)
+                .get_or_insert("i")
+                .get_or_insert("measured")
+                .insert("value", measured_this_coil);
+            self.results
+                .get_or_insert(sensor_name)
+                .get_or_insert("i")
+                .get_or_insert("measured")
+                .insert("time", times_to_reconstruct.clone());
+        }
+
+        // MDSplus is "Sensor-Major", but we want to rearrange the data to be "Time-Major"
+        let mut results_dynamic: Vec<SensorsDynamic> = Vec::with_capacity(n_time);
+        for i_time in 0..n_time {
+            // Select time-slide and the sensors we use in reconstruction
+            let measured_this_time_slice_and_sensors: Array1<f64> = measured.slice(s![.., i_time]).select(Axis(0), &include_indices).to_owned();
+            // Create new `SensorsDynamic` instance and store
+            let results_dynamic_this_time_slice: SensorsDynamic = SensorsDynamic {
+                measured: measured_this_time_slice_and_sensors,
+            };
+            results_dynamic.push(results_dynamic_this_time_slice);
+        }
+
+        let results_static_time_dependent: Vec<SensorsStatic> = vec![results_static.clone(); n_time];
+
+        // Return the static and dynamic results
+        (results_static_time_dependent, results_dynamic)
+    }
+
+    pub fn calculate_sensor_values_rs(&mut self, coils: &Coils, passives: &Passives, plasma: &Plasma) {
+        for sensor_name in self.results.keys() {
+            // Coils
+            let g_with_coils: Array1<f64> = self.results.get(&sensor_name).get("greens").get("pf").get("*").unwrap_array1(); // shape = [n_pf]
+            let coil_currents: Array2<f64> = coils.results.get("pf").get("*").get("i").get("measured").get("value").unwrap_array2(); // shape = [n_time, n_pf]
+            // let n_time: usize = coil_currents.len_of(Axis(0));
+
+            // Plasma
+            let g_with_plasma: Array1<f64> = self.results.get(&sensor_name).get("greens").get("plasma").unwrap_array1(); // shape = [n_z * n_r]
+            let j_2d: Array3<f64> = plasma.results.get("profiles_2d").get("r_z").get("j").unwrap_array3(); // shape = [n_time, n_z, n_r]
+            let d_area: f64 = plasma.results.get("grid").get("d_area").unwrap_f64();
+            let time: Array1<f64> = plasma.results.get("time").unwrap_array1();
+            let n_time: usize = time.len();
+
+            // Loop over time
+            let mut sensor_values: Array1<f64> = Array1::from_elem(n_time, f64::NAN);
+            for i_time in 0..n_time {
+                // PF coil
+                let sensor_values_from_coils: f64 = g_with_coils.dot(&coil_currents.slice(s![i_time, ..]));
+
+                // Passives
+                // TODO: this looks slow!
+                let mut sensor_values_from_passives: f64 = 0.0;
+                let passive_names: Vec<String> = self.results.get(&sensor_name).get("greens").get("passives").keys();
+                for passive_name in passive_names {
+                    let dof_names: Vec<String> = self.results.get(&sensor_name).get("greens").get("passives").get(&passive_name).keys();
+                    for dof_name in dof_names {
+                        let g_with_passive: f64 = self
+                            .results
+                            .get(&sensor_name)
+                            .get("greens")
+                            .get("passives")
+                            .get(&passive_name)
+                            .get(&dof_name)
+                            .unwrap_f64();
+                        let passive_dof_value: f64 = passives.results.get(&passive_name).get("dof").get(&dof_name).get("calculated").unwrap_array1()[i_time];
+                        sensor_values_from_passives += g_with_passive * passive_dof_value;
+                    }
+                }
+
+                // Plasma
+                let j_2d_flat: Array1<f64> = Array1::from_iter(j_2d.slice(s![i_time, .., ..]).iter().copied());
+                let sensor_values_from_plasma: f64 = (&g_with_plasma * j_2d_flat).sum() * d_area;
+
+                // Total
+                sensor_values[i_time] = sensor_values_from_coils + sensor_values_from_passives + sensor_values_from_plasma;
+            }
+
+            // Store this sensor
+            self.results
+                .get_or_insert(&sensor_name)
+                .get_or_insert("i")
+                .get_or_insert("calculated")
+                .insert("value", sensor_values);
+            self.results
+                .get_or_insert(&sensor_name)
+                .get_or_insert("i")
+                .get_or_insert("calculated")
+                .insert("time", time.clone());
+        }
+    }
+}

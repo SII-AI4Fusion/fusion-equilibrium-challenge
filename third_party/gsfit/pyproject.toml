@@ -1,0 +1,136 @@
+[build-system]
+build-backend = "maturin"
+requires = ["maturin>=1.7,<2.0"]
+
+[project]
+authors = [
+    {name = "Peter Buxton", email = "peter.buxton@tokamakenergy.com"},
+]
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
+    "Programming Language :: Python :: Implementation :: CPython",
+]
+dependencies = [
+    "f90nml",
+    "matplotlib",
+    "numpy",
+    "scipy",
+    "setuptools_git_versioning",
+    "toml",
+]
+description = "GSFit: Equilibrium reconstruction"
+dynamic = ["version"]
+license = "BSD-3-Clause"
+name = "gsfit"
+readme = "README.md"
+requires-python = ">=3.11"
+
+[project.optional-dependencies]
+dev = [
+    "ipykernel",
+    "ipympl",
+    "maturin[patchelf]; platform_system != 'Windows'",
+    "maturin; platform_system == 'Windows'",
+    "mypy",
+    "nbval",
+    "pytest",
+    "pytest-cov",
+    "pytest-mypy",
+    "pytest-xdist",
+    "scipy-stubs",
+    "shapely",
+    "ty",
+    "types-setuptools",
+    "types-shapely",
+]
+with_st40_mdsplus = [
+    "st40_database",
+    "standard_utility"
+]
+with_freegs_and_freegsnke = [
+    "freegs",
+    "freegsnke",
+    "freegs4e"
+]
+
+[project.urls]
+Repository = "https://github.com/tokamak-energy/gsfit"
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
+python-source = "python"
+python-packages = ["gsfit", "gsfit_rs", "diagnostic_and_simulation_base"]
+manifest-path = "rust/gsfit_rs/Cargo.toml"
+gsfit.data = ["gsfit/settings/"]
+
+# Decide which `mypy` rules to apply
+[tool.mypy]
+ignore_errors = false
+disallow_untyped_calls = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_subclassing_any = true
+disallow_any_generics = true
+check_untyped_defs = true
+no_implicit_optional = true
+show_error_codes = true
+strict_equality = true
+warn_redundant_casts = true
+warn_return_any = true
+warn_unreachable = true
+warn_unused_configs = true
+no_implicit_reexport = true
+
+# These packages don't contain any type hints or stubs.
+# Tell mypy to treat them as untyped here (instead of per-line `# type: ignore`)
+[[tool.mypy.overrides]]
+module = [
+    "freegs.*",
+    "freegsnke.*",
+    "freegs4e.*",
+    "st40_database.*",
+    "standard_utility.*",
+    "mdsthin.*",
+    "f90nml.*",
+]
+ignore_missing_imports = true
+
+[tool.ty.src]
+exclude = [
+    "python/diagnostic_and_simulation_base/nested_dictionary.py",
+]
+
+# These packages don't contain any type hints or stubs.
+# This is the `ty` equivalent of mypy's `ignore_missing_imports`
+[tool.ty.analysis]
+replace-imports-with-any = [
+    "freegs", "freegs.**",
+    "freegsnke", "freegsnke.**",
+    "freegs4e", "freegs4e.**",
+    "st40_database", "st40_database.**",
+    "standard_utility", "standard_utility.**",
+    "mdsthin", "mdsthin.**",
+    "f90nml", "f90nml.**",
+]
+
+# We use `ruff` not `black`. Here we "try" to prevent `black` from running.
+# There is no "robust" way of disabling `black`
+[tool.black]
+exclude = '.*'
+
+# We use `ruff` not `isort`. Here we "try" to prevent `isort` from running.
+# There is no "robust" way of disabling `isort`
+[tool.isort]
+skip_glob = ["*"]
+
+[tool.ruff]
+line-length = 160
+
+[tool.ruff.lint.isort]
+force-single-line = true
+single-line-exclusions = ["dash"]
