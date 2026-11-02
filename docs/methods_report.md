@@ -1,5 +1,8 @@
 # Methods report — team SII-Fusion (Codabench: jygao), FusionEC-26 Challenge 2 (draft)
 
+**Team members:** Jingyuan Gao, Wenyang Li, Tengfei Xu, Tianai Yin, Mingdong He  
+**Supervisor:** Zheng Xiong
+
 ## Summary
 
 The two machines use unrelated methods. **DIII-D** is the starter kit's SimpleMLP baseline trained at

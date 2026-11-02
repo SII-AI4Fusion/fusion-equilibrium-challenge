@@ -2,6 +2,9 @@
 
 Team SII-Fusion is registered on Codabench as team **jygao**.
 
+**Team members:** Jingyuan Gao, Wenyang Li, Tengfei Xu, Tianai Yin, Mingdong He  
+**Supervisor:** Zheng Xiong
+
 Reproduction package for the Final entry **Codabench submission 1012261** (scored 2026-10-27).
 The submission had two prediction files:
 
