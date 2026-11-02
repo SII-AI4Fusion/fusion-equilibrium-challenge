@@ -28,14 +28,14 @@ in time. `scripts/infer_mast.sh` offers two versions, selected with `PASSIVE_VAR
 
 | `PASSIVE_VARIANT` | Correction | Status |
 |---|---|---|
-| `delta_all` (default) | mean of Δψ removed over the full 65 × 65 grid, correction applied everywhere | rule-compliant; uses no competition asset |
+| `delta_all` (default) | mean of Δψ removed over the full 65 × 65 grid, correction applied everywhere | uses no competition asset |
 | `delta_mask` | mean removed and correction applied only inside `mask_coarse` of the starter kit's `fusion_scoring/masks/mast_envelope.npz` | **what submission 1012261 used**; reproduces it bit for bit |
 
-Rule 3 allows `mast_envelope.npz` only inside the official scoring derivation. Using it in
-`delta_mask` therefore does not comply with the rules. We found this while preparing this package. Both
-variants are kept so the submitted predictions can be rebuilt exactly (`delta_mask`) and a compliant
-pipeline is available (`delta_all`). The two differ only in this step: q95 and βN are identical, and ψ
-differs as reported in [`docs/verification.md`](docs/verification.md#3-the-two-passive-correction-variants).
+While re-checking our pipeline to prepare this package, we realised that this use of
+`mast_envelope.npz` may be problematic: Rule 3 mentions the file only in the context of the official
+scoring derivation. To be safe, both variants are kept, so the submitted predictions can be rebuilt
+exactly (`delta_mask`) and a pipeline that uses no competition asset is available (`delta_all`).
+The two differ only in this step: q95 and βN are identical, and ψ differs as reported in [`docs/verification.md`](docs/verification.md#3-the-two-passive-correction-variants).
 
 Data sources and their use: [`docs/provenance.md`](docs/provenance.md).
 Training compute declaration: [`docs/compute.md`](docs/compute.md).

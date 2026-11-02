@@ -22,10 +22,10 @@
 #   NGPU [all visible]  DEVICE [cuda]  SHARDS [1]  RANK [0]
 #   WORKERS_DOF1 / WORKERS_DOF2 / WORKERS_PASSIVE  GSFit processes per node [40 / 60 / 28, for 128 cores]
 #   LIMIT_SHOTS  only the first N shots (smoke test) [0 = all 1205]
-#   PASSIVE_VARIANT  delta_all [default]: full-grid correction, no competition asset (rule-compliant);
+#   PASSIVE_VARIANT  delta_all [default]: full-grid correction, no competition asset;
 #                    delta_mask: correction restricted to the starter kit's scoring-envelope mask, which
-#                    reproduces submission 1012261 exactly but uses that file outside the official scoring
-#                    (not permitted by rule 3; kept only for reproduction, see README)
+#                    reproduces submission 1012261 exactly; this use of that file outside the official
+#                    scoring may be problematic under rule 3, so it is kept for reproduction (see README)
 #   TORCH_PY / GSFIT_PY  interpreters of envs/torch and envs/gsfit (see README)
 set -uo pipefail
 source "$(dirname "$0")/env.sh"

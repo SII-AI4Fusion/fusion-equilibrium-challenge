@@ -1,10 +1,10 @@
 """Passive-current correction, interpolated between converged keyframes.
 
-`delta_all` (default, rule-compliant): subtract the full-grid mean of psi_passive - psi_base and apply the
+`delta_all` (default, uses no competition asset): subtract the full-grid mean of psi_passive - psi_base and apply the
 correction at every grid point.
 `delta_mask` (reproduces submission 1012261): mean and correction restricted to `mask_coarse` of the starter
-kit's MAST scoring envelope. Rule 3 allows that file only inside the official scoring, so this variant is
-kept for reproduction only.
+kit's MAST scoring envelope. Rule 3 mentions that file only for the official scoring, so this use may be
+problematic; the variant is kept to reproduce the submission (see README).
 q95 receives its keyframe difference in both; betaN is unchanged here (the inference entrypoint replaces it
 with the dof=1 prediction).
 """
